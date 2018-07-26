@@ -6,6 +6,8 @@
 #define V8_OBJECTS_JS_ARRAY_INL_H_
 
 #include "src/objects/js-array.h"
+
+#include "src/objects-inl.h"  // Needed for write barriers
 #include "src/wasm/wasm-engine.h"
 
 // Has to be the last include (doesn't have include guards):
@@ -13,10 +15,6 @@
 
 namespace v8 {
 namespace internal {
-
-TYPE_CHECKER(JSArray, JS_ARRAY_TYPE)
-TYPE_CHECKER(JSArrayBuffer, JS_ARRAY_BUFFER_TYPE)
-TYPE_CHECKER(JSTypedArray, JS_TYPED_ARRAY_TYPE)
 
 CAST_ACCESSOR(JSArray)
 CAST_ACCESSOR(JSArrayBuffer)
@@ -51,12 +49,13 @@ void JSArray::SetContent(Handle<JSArray> array,
   EnsureCanContainElements(array, storage, storage->length(),
                            ALLOW_COPIED_DOUBLE_ELEMENTS);
 
-  DCHECK((storage->map() == array->GetHeap()->fixed_double_array_map() &&
-          IsDoubleElementsKind(array->GetElementsKind())) ||
-         ((storage->map() != array->GetHeap()->fixed_double_array_map()) &&
-          (IsObjectElementsKind(array->GetElementsKind()) ||
-           (IsSmiElementsKind(array->GetElementsKind()) &&
-            Handle<FixedArray>::cast(storage)->ContainsOnlySmisOrHoles()))));
+  DCHECK(
+      (storage->map() == array->GetReadOnlyRoots().fixed_double_array_map() &&
+       IsDoubleElementsKind(array->GetElementsKind())) ||
+      ((storage->map() != array->GetReadOnlyRoots().fixed_double_array_map()) &&
+       (IsObjectElementsKind(array->GetElementsKind()) ||
+        (IsSmiElementsKind(array->GetElementsKind()) &&
+         Handle<FixedArray>::cast(storage)->ContainsOnlySmisOrHoles()))));
   array->set_elements(*storage);
   array->set_length(Smi::FromInt(storage->length()));
 }
@@ -105,12 +104,6 @@ void* JSArrayBuffer::allocation_base() const {
     return data->allocation_base;
   }
   return backing_store();
-}
-
-ArrayBuffer::Allocator::AllocationMode JSArrayBuffer::allocation_mode() const {
-  using AllocationMode = ArrayBuffer::Allocator::AllocationMode;
-  return is_wasm_memory() ? AllocationMode::kReservation
-                          : AllocationMode::kNormal;
 }
 
 bool JSArrayBuffer::is_wasm_memory() const {
@@ -203,11 +196,14 @@ Object* JSTypedArray::length() const {
   return Object::cast(READ_FIELD(this, kLengthOffset));
 }
 
-uint32_t JSTypedArray::length_value() const {
+size_t JSTypedArray::length_value() const {
   if (WasNeutered()) return 0;
-  uint32_t index = 0;
-  CHECK(Object::cast(READ_FIELD(this, kLengthOffset))->ToArrayLength(&index));
-  return index;
+  double val = Object::cast(READ_FIELD(this, kLengthOffset))->Number();
+  DCHECK_LE(val, kMaxSafeInteger);   // 2^53-1
+  DCHECK_GE(val, -kMaxSafeInteger);  // -2^53+1
+  DCHECK_LE(val, std::numeric_limits<size_t>::max());
+  DCHECK_GE(val, std::numeric_limits<size_t>::min());
+  return static_cast<size_t>(val);
 }
 
 void JSTypedArray::set_length(Object* value, WriteBarrierMode mode) {

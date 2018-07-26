@@ -41,7 +41,7 @@ class RegExpBuiltinsAssembler : public CodeStubAssembler {
   Node* AllocateRegExpResult(Node* context, Node* length, Node* index,
                              Node* input);
 
-  Node* FastLoadLastIndex(Node* regexp);
+  TNode<Object> FastLoadLastIndex(Node* regexp);
   Node* SlowLoadLastIndex(Node* context, Node* regexp);
   Node* LoadLastIndex(Node* context, Node* regexp, bool is_fastpath);
 
@@ -58,9 +58,10 @@ class RegExpBuiltinsAssembler : public CodeStubAssembler {
                          Variable* var_string_end);
 
   // Low level logic around the actual call into pattern matching code.
-  Node* RegExpExecInternal(Node* const context, Node* const regexp,
-                           Node* const string, Node* const last_index,
-                           Node* const match_info);
+  TNode<Object> RegExpExecInternal(TNode<Context> context,
+                                   TNode<JSRegExp> regexp, TNode<String> string,
+                                   TNode<Number> last_index,
+                                   TNode<FixedArray> match_info);
 
   Node* ConstructNewResultFromMatchInfo(Node* const context, Node* const regexp,
                                         Node* const match_info,
@@ -89,6 +90,8 @@ class RegExpBuiltinsAssembler : public CodeStubAssembler {
   // Performs fast path checks on the given object itself, but omits prototype
   // checks.
   Node* IsFastRegExpNoPrototype(Node* const context, Node* const object);
+  TNode<BoolT> IsFastRegExpWithOriginalExec(TNode<Context> context,
+                                            TNode<JSRegExp> object);
   Node* IsFastRegExpNoPrototype(Node* const context, Node* const object,
                                 Node* const map);
 

@@ -16,8 +16,8 @@ namespace v8 {
 namespace internal {
 
 class AllocationSite;
-class BoilerplateDescription;
-class ConstantElementsPair;
+class ObjectBoilerplateDescription;
+class ArrayBoilerplateDescription;
 class FeedbackCell;
 class SharedFunctionInfo;
 
@@ -626,6 +626,28 @@ std::ostream& operator<<(std::ostream&, CreateLiteralParameters const&);
 
 const CreateLiteralParameters& CreateLiteralParametersOf(const Operator* op);
 
+class CloneObjectParameters final {
+ public:
+  CloneObjectParameters(VectorSlotPair const& feedback, int flags)
+      : feedback_(feedback), flags_(flags) {}
+
+  VectorSlotPair const& feedback() const { return feedback_; }
+  int flags() const { return flags_; }
+
+ private:
+  VectorSlotPair const feedback_;
+  int const flags_;
+};
+
+bool operator==(CloneObjectParameters const&, CloneObjectParameters const&);
+bool operator!=(CloneObjectParameters const&, CloneObjectParameters const&);
+
+size_t hash_value(CloneObjectParameters const&);
+
+std::ostream& operator<<(std::ostream&, CloneObjectParameters const&);
+
+const CloneObjectParameters& CloneObjectParametersOf(const Operator* op);
+
 // Descriptor used by the JSForInPrepare and JSForInNext opcodes.
 enum class ForInMode : uint8_t {
   kUseEnumCacheKeysAndIndices,
@@ -643,7 +665,7 @@ BinaryOperationHint BinaryOperationHintOf(const Operator* op);
 
 CompareOperationHint CompareOperationHintOf(const Operator* op);
 
-int GeneratorStoreRegisterCountOf(const Operator* op) V8_WARN_UNUSED_RESULT;
+int GeneratorStoreValueCountOf(const Operator* op) V8_WARN_UNUSED_RESULT;
 int RestoreRegisterIndexOf(const Operator* op) V8_WARN_UNUSED_RESULT;
 
 Handle<ScopeInfo> ScopeInfoOf(const Operator* op) V8_WARN_UNUSED_RESULT;
@@ -685,6 +707,7 @@ class V8_EXPORT_PRIVATE JSOperatorBuilder final
   const Operator* ToLength();
   const Operator* ToName();
   const Operator* ToNumber();
+  const Operator* ToNumberConvertBigInt();
   const Operator* ToNumeric();
   const Operator* ToObject();
   const Operator* ToString();
@@ -705,16 +728,19 @@ class V8_EXPORT_PRIVATE JSOperatorBuilder final
   const Operator* CreateObject();
   const Operator* CreatePromise();
   const Operator* CreateTypedArray();
-  const Operator* CreateLiteralArray(Handle<ConstantElementsPair> constant,
-                                     VectorSlotPair const& feedback,
-                                     int literal_flags, int number_of_elements);
+  const Operator* CreateLiteralArray(
+      Handle<ArrayBoilerplateDescription> constant,
+      VectorSlotPair const& feedback, int literal_flags,
+      int number_of_elements);
   const Operator* CreateEmptyLiteralArray(VectorSlotPair const& feedback);
   const Operator* CreateEmptyLiteralObject();
 
-  const Operator* CreateLiteralObject(Handle<BoilerplateDescription> constant,
-                                      VectorSlotPair const& feedback,
-                                      int literal_flags,
-                                      int number_of_properties);
+  const Operator* CreateLiteralObject(
+      Handle<ObjectBoilerplateDescription> constant,
+      VectorSlotPair const& feedback, int literal_flags,
+      int number_of_properties);
+  const Operator* CloneObject(VectorSlotPair const& feedback,
+                              int literal_flags);
   const Operator* CreateLiteralRegExp(Handle<String> constant_pattern,
                                       VectorSlotPair const& feedback,
                                       int literal_flags);
@@ -789,7 +815,7 @@ class V8_EXPORT_PRIVATE JSOperatorBuilder final
   const Operator* StoreMessage();
 
   // Used to implement Ignition's SuspendGenerator bytecode.
-  const Operator* GeneratorStore(int register_count);
+  const Operator* GeneratorStore(int value_count);
 
   // Used to implement Ignition's SwitchOnGeneratorState bytecode.
   const Operator* GeneratorRestoreContinuation();
@@ -816,6 +842,7 @@ class V8_EXPORT_PRIVATE JSOperatorBuilder final
 
   const Operator* ObjectIsArray();
   const Operator* ParseInt();
+  const Operator* RegExpTest();
 
  private:
   Zone* zone() const { return zone_; }

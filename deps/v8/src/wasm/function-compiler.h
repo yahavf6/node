@@ -20,6 +20,7 @@ class LiftoffCompilationUnit;
 struct ModuleWireBytes;
 class NativeModule;
 class WasmCode;
+class WasmEngine;
 struct WasmFunction;
 
 enum RuntimeExceptionSupport : bool {
@@ -28,6 +29,8 @@ enum RuntimeExceptionSupport : bool {
 };
 
 enum UseTrapHandler : bool { kUseTrapHandler = true, kNoTrapHandler = false };
+
+enum LowerSimd : bool { kLowerSimd = true, kNoLowerSimd = false };
 
 // The {ModuleEnv} encapsulates the module data that is used during compilation.
 // ModuleEnvs are shareable across multiple compilations.
@@ -44,11 +47,15 @@ struct ModuleEnv {
   // be generated differently.
   const RuntimeExceptionSupport runtime_exception_support;
 
+  const LowerSimd lower_simd;
+
   constexpr ModuleEnv(const WasmModule* module, UseTrapHandler use_trap_handler,
-                      RuntimeExceptionSupport runtime_exception_support)
+                      RuntimeExceptionSupport runtime_exception_support,
+                      LowerSimd lower_simd = kNoLowerSimd)
       : module(module),
         use_trap_handler(use_trap_handler),
-        runtime_exception_support(runtime_exception_support) {}
+        runtime_exception_support(runtime_exception_support),
+        lower_simd(lower_simd) {}
 };
 
 class WasmCompilationUnit final {
@@ -59,13 +66,11 @@ class WasmCompilationUnit final {
   // If constructing from a background thread, pass in a Counters*, and ensure
   // that the Counters live at least as long as this compilation unit (which
   // typically means to hold a std::shared_ptr<Counters>).
-  // If no such pointer is passed, Isolate::counters() will be called. This is
-  // only allowed to happen on the foreground thread.
-  WasmCompilationUnit(Isolate*, ModuleEnv*, wasm::NativeModule*,
-                      wasm::FunctionBody, wasm::WasmName, int index,
-                      Handle<Code> centry_stub,
-                      CompilationMode = GetDefaultCompilationMode(),
-                      Counters* = nullptr, bool lower_simd = false);
+  // If used exclusively from a foreground thread, Isolate::counters() may be
+  // used by callers to pass Counters.
+  WasmCompilationUnit(WasmEngine* wasm_engine, ModuleEnv*, wasm::NativeModule*,
+                      wasm::FunctionBody, wasm::WasmName, int index, Counters*,
+                      CompilationMode = GetDefaultCompilationMode());
 
   ~WasmCompilationUnit();
 
@@ -74,11 +79,9 @@ class WasmCompilationUnit final {
 
   static wasm::WasmCode* CompileWasmFunction(
       wasm::NativeModule* native_module, wasm::ErrorThrower* thrower,
-      Isolate* isolate, const wasm::ModuleWireBytes& wire_bytes, ModuleEnv* env,
-      const wasm::WasmFunction* function,
+      Isolate* isolate, ModuleEnv* env, const wasm::WasmFunction* function,
       CompilationMode = GetDefaultCompilationMode());
 
-  size_t memory_cost() const { return memory_cost_; }
   wasm::NativeModule* native_module() const { return native_module_; }
   CompilationMode mode() const { return mode_; }
 
@@ -86,17 +89,13 @@ class WasmCompilationUnit final {
   friend class LiftoffCompilationUnit;
   friend class compiler::TurbofanWasmCompilationUnit;
 
-  Isolate* isolate_;
   ModuleEnv* env_;
+  WasmEngine* wasm_engine_;
   wasm::FunctionBody func_body_;
   wasm::WasmName func_name_;
   Counters* counters_;
-  Handle<Code> centry_stub_;
   int func_index_;
-  size_t memory_cost_ = 0;
   wasm::NativeModule* native_module_;
-  // TODO(wasm): Put {lower_simd_} inside the {ModuleEnv}.
-  bool lower_simd_;
   CompilationMode mode_;
   // LiftoffCompilationUnit, set if {mode_ == kLiftoff}.
   std::unique_ptr<LiftoffCompilationUnit> liftoff_unit_;
